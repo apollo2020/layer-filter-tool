@@ -38,7 +38,7 @@ class CustomTools():
     def check_config_manager(self):
         """Create config_manager.py if absent from CustomTools.app_files_path."""
 
-        data = """
+        script = """
 import tkFont
 from Tkinter import *
 from sys import argv
@@ -675,7 +675,7 @@ if __name__ == '__main__':
 
         self.script_path = os.path.join(self.app_files_path, 'config_manager.py')
         f = open(self.script_path, 'w')
-        f.write(data)
+        f.write(script)
         f.close()
 
     def sde_connect(self, database, server="<default server>", username="", password="", version="SDE.DEFAULT"):
