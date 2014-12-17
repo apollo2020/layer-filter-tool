@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<xml datetime="2014-12-12, 17:14:16" name="sde_common.GIS.ProjectBoundary" source="Database Connections\GISSQLPROD.COMMON.Default as mangoldd.sde\sde_common.GIS.Boundary\sde_common.GIS.ProjectBoundary">
+	<FOLDERRSN MAX="156712.0" MIN="6654.0" NULL_FLAG="1" USER_MAX="156712.0" USER_MIN="6654.0" USER_NULL_FLAG="1"/>
+	<PROJ_NUMBER MAX="9636.0" MIN="33.0" NULL_FLAG="1" USER_MAX="9636.0" USER_MIN="33.0" USER_NULL_FLAG="1"/>
+	<Shape.STArea MAX="19060258.021484375" MIN="0.0" NULL_FLAG="1" USER_MAX="19060258.021484375" USER_MIN="0.0" USER_NULL_FLAG="1"/>
+	<Shape.STLength MAX="36663.1745880584" MIN="0.0" NULL_FLAG="1" USER_MAX="36663.1745880584" USER_MIN="0.0" USER_NULL_FLAG="1"/>
+</xml>
