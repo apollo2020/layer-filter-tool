@@ -6,7 +6,6 @@ import subprocess
 import pythonaddins
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
-from getpass import getuser
 from tempfile import gettempdir
 
 
@@ -16,6 +15,8 @@ class CustomTools():
     def __init__(self):
         self.config_attributes = ['MIN', 'MAX', 'NULL_FLAG']
         self.number_types = ['Double', 'Integer', 'Single', 'SmallInteger']
+        self.int_types = ['Integer', 'Single', 'SmallInteger']
+        self.float_types = ['Double']
         self.ignore_fields = ['Shape', 'SHAPE', 'FID', 'GlobalID', 'GLOBALID', 'FID', 'OBJECTID', 'FREQUENCY']
         self.table_subs = {'Shape_STLength__': 'Shape.STLength',
                            'Shape_STArea__': 'Shape.STArea',
@@ -31,7 +32,8 @@ class CustomTools():
                              'SHAPE.STArea': 'SHAPE.STArea()'}
         self.mxd = arcpy.mapping.MapDocument("CURRENT")
         self.temp_dir = gettempdir()
-        self.app_files_path = os.path.abspath("C:\Users\%s\AppData\Roaming\LayerFilterTool" % getuser())
+        self.xml_path = os.path.join(self.temp_dir, 'filter_config.xml')
+        self.app_files_path = r"\\fileserv\usa\GIS\Code_Catalog\Python\Addins\Projects\LayerFilterTool\AppFiles"
         self.script_path = os.path.join(self.app_files_path, "config_manager.py")
         self.check_config_manager()
 
@@ -51,12 +53,52 @@ class CustomTools():
 
     def __init__(self):
 
-        pass
+        self.int_types = ['Integer', 'Single', 'SmallInteger']
+        self.float_types = ['Double']
 
-    def write_message(self, text):
-        f = open(r'C:\Users\mangoldd\Desktop\output.txt', 'a')
-        f.write(text)
-        f.close()
+    def round_up(self, x, n):
+        value = x
+        if value > 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            if dec_str[n:] != '':
+                term_int = int(dec_str[n-1]) + 1
+                dec_str = dec_str[:n-1]
+                dec_str += str(term_int)
+                value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        elif value < 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            dec_str = dec_str[:n]
+            value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        else:
+            return float(value)
+
+    def round_down(self, x, n):
+        value = x
+        if value < 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            if dec_str[n:] != '':
+                term_int = int(dec_str[n-1]) + 1
+                dec_str = dec_str[:n-1]
+                dec_str += str(term_int)
+                value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        elif value > 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            dec_str = dec_str[:n]
+            value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        else:
+            return float(value)
 
     def float_to_string(self, f, n):
 
@@ -69,6 +111,7 @@ class CustomTools():
     def write_config_xml(self, config_dict, file_path):
 
         result = file_path
+
         xml = ET.Element('xml')
         xml.set('name', config_dict['name'])
         xml.set('source', config_dict['source'])
@@ -78,10 +121,13 @@ class CustomTools():
             elem = ET.SubElement(xml, name)
 
             for attr, value in config.iteritems():
-                if type(value) == float:
-                    elem.set(attr, self.float_to_string(value, 10))
+
+                if type(value) is float:
+                    value = self.float_to_string(value, 10)
                 else:
-                    elem.set(attr, str(value))
+                    value = str(value)
+
+                elem.set(attr, value)
 
         raw_xml = ET.tostring(xml)
         parsed_xml = minidom.parseString(raw_xml)
@@ -119,7 +165,7 @@ class ConfigManager(Frame, CustomTools):
         self.xml_path = argv[1]
         self.config_dict = self.read_config_xml(self.xml_path)
         self.widgets = []
-        self.resolution = 0.01
+        self.resolution = 1
         self.canvas = None
         self.xml_path_label = None
         self.min_width = None
@@ -185,9 +231,18 @@ class ConfigManager(Frame, CustomTools):
 
         for name, config in sorted(self.config_dict['config'].iteritems()):
 
-            widget_min = self.expand_value(float(config['USER_MIN']), 'USER_MIN')
-            widget_max = self.expand_value(float(config['USER_MAX']), 'USER_MAX')
-            null_flag = int(float(config['USER_NULL_FLAG']))
+            data_type = config['TYPE']
+            widget_min = float(config['MIN'])
+            widget_max = float(config['MAX'])
+
+            if data_type in self.float_types:
+                self.resolution = 0.01
+                if widget_min != 0.0:
+                    widget_min = self.round_down(widget_min, 2)
+                if widget_max != 0.0:
+                    widget_max = self.round_up(widget_max, 2)
+
+            null_flag = config['USER_NULL_FLAG']
 
             inner_frame = Frame(canvas_child,
                                 takefocus=0)
@@ -217,6 +272,7 @@ class ConfigManager(Frame, CustomTools):
             null_var = IntVar()
             null_var.field_name = name
             null_var.attr_type = "USER_NULL_FLAG"
+            null_var.data_type = data_type
             null_var.set(null_flag)
 
             null_checkbutton = Checkbutton(title_frame,
@@ -266,6 +322,7 @@ class ConfigManager(Frame, CustomTools):
             min_entry_var = StringVar()
             min_entry_var.field_name = name
             min_entry_var.attr_type = "USER_MIN"
+            min_entry_var.data_type = data_type
 
             min_entry = Entry(min_frame,
                               width=8,
@@ -277,6 +334,7 @@ class ConfigManager(Frame, CustomTools):
 
             min_entry.field_name = name
             min_entry.attr_type = "USER_MIN"
+            min_entry.data_type = data_type
             min_entry.bind('<Return>', self.callback)
             min_entry.bind('<FocusOut>', self.callback)
 
@@ -295,11 +353,12 @@ class ConfigManager(Frame, CustomTools):
 
             min_scale.field_name = name
             min_scale.attr_type = "USER_MIN"
-            min_scale.set(widget_min)
+            min_scale.data_type = data_type
+            min_scale.set(float(config['USER_MIN']))
             min_scale.bind("<ButtonRelease-1>", self.callback)
             min_scale.old_value = min_scale.get()
 
-            min_entry_var.set(round(min_scale.cget('from'), 2))
+            min_entry_var.set(min_scale.get())
             min_entry_var.old_value = min_entry_var.get()
 
             max_scale_label = Label(max_frame,
@@ -316,6 +375,7 @@ class ConfigManager(Frame, CustomTools):
             max_entry_var = StringVar()
             max_entry_var.field_name = name
             max_entry_var.attr_type = "USER_MAX"
+            max_entry_var.data_type = data_type
 
             max_entry = Entry(max_frame,
                               width=8,
@@ -327,6 +387,7 @@ class ConfigManager(Frame, CustomTools):
 
             max_entry.field_name = name
             max_entry.attr_type = 'USER_MAX'
+            max_entry.data_type = data_type
             max_entry.bind('<Return>', self.callback)
             max_entry.bind('<FocusOut>', self.callback)
 
@@ -345,11 +406,12 @@ class ConfigManager(Frame, CustomTools):
 
             max_scale.field_name = name
             max_scale.attr_type = "USER_MAX"
-            max_scale.set(widget_max)
+            max_scale.data_type = data_type
+            max_scale.set(float(config['USER_MAX']))
             max_scale.bind("<ButtonRelease-1>", self.callback)
             max_scale.old_value = max_scale.get()
 
-            max_entry_var.set(round(max_scale.cget('to'), 2))
+            max_entry_var.set(max_scale.get())
             max_entry_var.old_value = max_entry_var.get()
 
             self.widgets += [min_scale,
@@ -373,6 +435,8 @@ class ConfigManager(Frame, CustomTools):
                         fill=X,
                         padx=5)
 
+            self.resolution = 1
+
         container.update()
         self.canvas.update()
         canvas_child.update()
@@ -394,8 +458,7 @@ class ConfigManager(Frame, CustomTools):
 
         set_filter = Button(controls,
                             text="Save Settings",
-                            command=self.update_config_dict,
-                            takefocus=0)
+                            command=self.update_config_dict)
 
         set_filter.pack(padx=5,
                         pady=5,
@@ -466,17 +529,15 @@ class ConfigManager(Frame, CustomTools):
 
     def expand_value(self, value, attr_type):
 
-        value = float(value)
+        if value != 0.0:
 
-        if value % 1.0 > 0.0:
+            if attr_type == 'MIN':
 
-            if attr_type == 'USER_MIN':
+                value = self.round_down(value, 2)
 
-                value -= self.resolution
+            if attr_type == 'MAX':
 
-            if attr_type == 'USER_MAX':
-
-                value += self.resolution
+                value = self.round_up(value, 2)
 
         return value
 
@@ -547,39 +608,23 @@ class ConfigManager(Frame, CustomTools):
 
         if isinstance(widget, Entry):
 
-            if widget.attr_type == 'USER_MIN':
+            var = [w for w in self.widgets
+                   if isinstance(w, StringVar)
+                   and w.field_name == widget.field_name
+                   and w.attr_type == widget.attr_type][0]
 
-                min_var = [w for w in self.widgets
-                           if isinstance(w, StringVar)
-                           and w.field_name == widget.field_name
-                           and w.attr_type == 'USER_MIN'][0]
+            value = float(var.get())
 
-                value = float(min_var.get())
+            scale = [w for w in self.widgets
+                     if isinstance(w, Scale)
+                     and w.field_name == widget.field_name
+                     and w.attr_type == widget.attr_type][0]
 
-                min_scale = [w for w in self.widgets
-                             if isinstance(w, Scale)
-                             and w.field_name == widget.field_name
-                             and w.attr_type == 'USER_MIN'][0]
+            scale.set(value)
+            self.validate_scale(scale)
+            scale.old_value = scale.get()
 
-                min_scale.set(value)
-                self.validate_scale(min_scale)
-
-            if widget.attr_type == 'USER_MAX':
-
-                max_var = [w for w in self.widgets
-                           if isinstance(w, StringVar)
-                           and w.field_name == widget.field_name
-                           and w.attr_type == 'USER_MAX'][0]
-
-                value = float(max_var.get())
-
-                max_scale = [w for w in self.widgets
-                             if isinstance(w, Scale)
-                             and w.field_name == widget.field_name
-                             and w.attr_type == 'USER_MAX'][0]
-
-                max_scale.set(value)
-                self.validate_scale(max_scale)
+            return scale.get()
 
         else:
 
@@ -589,25 +634,15 @@ class ConfigManager(Frame, CustomTools):
 
         if isinstance(widget, Scale):
 
-            value = str(widget.get())
+            value = widget.get()
 
-            if widget.attr_type == 'USER_MIN':
+            var = [w for w in self.widgets
+                   if isinstance(w, StringVar)
+                   and w.field_name == widget.field_name
+                   and w.attr_type == widget.attr_type][0]
 
-                min_var = [w for w in self.widgets
-                           if isinstance(w, StringVar)
-                           and w.field_name == widget.field_name
-                           and w.attr_type == 'USER_MIN'][0]
-
-                min_var.set(value)
-
-            if widget.attr_type == 'USER_MAX':
-
-                max_var = [w for w in self.widgets
-                           if isinstance(w, StringVar)
-                           and w.field_name == widget.field_name
-                           and w.attr_type == 'USER_MAX'][0]
-
-                max_var.set(value)
+            var.set(str(value))
+            var.old_value = var.get()
 
         else:
 
@@ -630,28 +665,22 @@ class ConfigManager(Frame, CustomTools):
 
         if isinstance(widget, Scale):
 
-            new_value = widget.get()
-            old_value = widget.old_value
+            if widget.get() != widget.old_value:
 
-            if new_value != old_value:
-
-                widget.old_value = new_value
                 self.validate_scale(widget)
                 self.set_entry_value(widget)
                 self.xml_path_label.configure(bg="#FF7F7F")
+                widget.old_value = widget.get()
 
         if isinstance(widget, Entry):
 
             entry_var = self.get_entry_var(widget)
+            new_value = str(self.set_scale_value(widget))
+            entry_var.set(new_value)
 
-            new_value = entry_var.get()
-            old_value = entry_var.old_value
-
-            if new_value != old_value:
-
-                entry_var.old_value = new_value
-                self.set_scale_value(widget)
+            if new_value != entry_var.old_value:
                 self.xml_path_label.configure(bg="#FF7F7F")
+                entry_var.old_value = new_value
 
         if isinstance(widget, Checkbutton):
 
@@ -705,7 +734,7 @@ if __name__ == '__main__':
                 sys.exit("\nSyntax for a direct connection in the Service parameter is required for geodatabase upgrade.")
 
             # local variables
-            sde_conn_file_name = sde_conn_file_name + "_" + database
+            sde_conn_file_name = sde_conn_file_name + "_" + database + "_" + version.split('.')[-1].lower()
 
             sde_conn_file_path = self.app_files_path + os.sep + sde_conn_file_name + ".sde"
 
@@ -784,8 +813,9 @@ if __name__ == '__main__':
 
             featclass = desc.featureClass.name
             properties = layer.serviceProperties
-            workspace = self.sde_connect(database=properties['Database'],
-                                         server=properties['Server'])
+            workspace = self.sde_connect(server=properties['Server'],
+                                         database=properties['Database'],
+                                         version=properties['Version'])
             datasource = os.path.join(workspace, featclass)
 
         else:
@@ -801,15 +831,12 @@ if __name__ == '__main__':
 
         num_fields = [fld
                       for fld in all_fields
-                      if fld.type in self.number_types]
+                      if fld.type in self.number_types
+                      and fld.name not in self.ignore_fields]
 
-        field_names = [fld.name
-                       for fld in num_fields
-                       if fld.name not in self.ignore_fields]
-
-        if len(field_names) > 0:
-            field_array = [[name, attr]
-                           for name in field_names
+        if len(num_fields) > 0:
+            field_array = [[fld.name, attr]
+                           for fld in num_fields
                            for attr in ['MIN', 'MAX']]
 
             arcpy.env.workspace = "in_memory"
@@ -820,23 +847,29 @@ if __name__ == '__main__':
             raw_vals = zip(scur.fields, scur.next())
             del scur
 
-            for name in field_names:
-                if name in self.forward_subs:
-                    name = self.forward_subs[name]
+            for fld in num_fields:
+
+                if fld.name in self.forward_subs:
+                    name = self.forward_subs[fld.name]
+                else:
+                    name = fld.name
                 result['config'][name] = {}
+                result['config'][name]['TYPE'] = fld.type
 
                 for attr in self.config_attributes:
+                    init_value = 0
+
                     if attr in ['NULL_FLAG']:
-                        result['config'][name][attr] = 1
-                        result['config'][name]['USER_' + attr] = 1
-                    else:
-                        result['config'][name][attr] = 0.0
-                        result['config'][name]['USER_' + attr] = 0.0
+                        init_value = 1
+
+                    result['config'][name][attr] = init_value
+                    result['config'][name]['USER_' + attr] = init_value
 
             for pair in raw_vals:
                 raw_name = pair[0]
                 attr = raw_name.split("_")[0]
                 name = raw_name[len(attr) + 1:]
+
                 if name in self.table_subs:
                     name = self.table_subs[name]
                 value = pair[-1]
@@ -844,13 +877,26 @@ if __name__ == '__main__':
                 try:
 
                     if value is None:
-                        value = 0.0
+                        value = 0
+                    if result['config'][name]['TYPE'] in self.float_types:
+                        value = float(value)
+                    elif result['config'][name]['TYPE'] in self.int_types:
+                        value = int(value)
 
                     result['config'][name][attr] = value
                     result['config'][name]['USER_' + attr] = value
 
                 except KeyError:
+                    print("Key not found for %s, %s" % (name, attr))
                     pass
+
+            for name, attr in sorted(result['config'].iteritems()):
+
+                if result['config'][name]['TYPE'] in self.float_types:
+                    if float(result['config'][name]['USER_MIN']) != 0.0:
+                        result['config'][name]['USER_MIN'] = self.round_down(result['config'][name]['USER_MIN'], 2)
+                    if float(result['config'][name]['USER_MAX']) != 0.0:
+                        result['config'][name]['USER_MAX'] = self.round_up(result['config'][name]['USER_MAX'], 2)
 
         else:
             msg = "No filterable fields found."
@@ -867,6 +913,74 @@ if __name__ == '__main__':
         if str_val[-1] == ".":
             str_val += "0"
         return str_val
+
+    def round_up(self, x, n):
+        value = x
+        if value > 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            if dec_str[n:] != '':
+                term_int = int(dec_str[n-1]) + 1
+                dec_str = dec_str[:n-1]
+                dec_str += str(term_int)
+                value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        elif value < 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            dec_str = dec_str[:n]
+            value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        else:
+            return float(value)
+
+    def round_down(self, x, n):
+        value = x
+        if value < 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            if dec_str[n:] != '':
+                term_int = int(dec_str[n-1]) + 1
+                dec_str = dec_str[:n-1]
+                dec_str += str(term_int)
+                value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        elif value > 0.0:
+            int_str = str(x).split('.')[0]
+            dec_str = str(x - float(str(x).split('.')[0])).split('.')[-1]
+            dec_str = dec_str[:n]
+            value = float('.'.join([int_str, dec_str]))
+            fmt_str = "%." + str(n) + "f"
+            return float(fmt_str % value)
+        else:
+            return float(value)
+
+    def config_xml_exists(self, layer_name):
+        """Check for existing config xml file."""
+
+        if os.path.exists(self.xml_path):
+
+            print("Config xml path exists.")
+            config_dict = self.read_config_xml(self.xml_path)
+            config_name = config_dict['name']
+
+            if config_name == layer_name:
+
+                print("Config name matches layer name.")
+                return True, layer_name
+
+            else:
+
+                print("Config name does not match layer name.")
+                return False
+
+        else:
+
+            print("Config xml path does not exist.")
+            return False
 
     def write_config_xml(self, config_dict, file_path):
         """Write a xml file to hold layer configuration values
@@ -885,10 +999,13 @@ if __name__ == '__main__':
             elem = ET.SubElement(xml, name)
 
             for attr, value in config.iteritems():
-                if type(value) == float:
-                    elem.set(attr, self.float_to_string(value, 10))
+
+                if type(value) is float:
+                    value = self.float_to_string(value, 10)
                 else:
-                    elem.set(attr, str(value))
+                    value = str(value)
+
+                elem.set(attr, value)
 
         raw_xml = ET.tostring(xml)
         parsed_xml = minidom.parseString(raw_xml)
@@ -962,24 +1079,20 @@ class ConfigureFilter(object, CustomTools):
         CustomTools.__init__(self)
         self.enabled = False
         self.checked = False
-        self.xml_path = os.path.join(self.temp_dir, 'filter_config.xml')
 
     def onClick(self):
         """Launch filter config GUI as external python process."""
 
-        try:
-            layer = self.get_feature_layers(self.mxd, layer_selector.value)[0]
+        layer = self.get_feature_layers(self.mxd, layer_selector.value)[0]
+
+        if not self.config_xml_exists(layer.name):
+
             config_dict = self.get_layer_config(layer)
             self.write_config_xml(config_dict, self.xml_path)
 
-        except AttributeError as e:
-            print("Error in writing config XML.")
-            print(e.message)
-            return
-
         print("Launching Filter Configuration Tool...")
         subprocess.Popen(["pythonw", self.script_path, self.xml_path], shell=False)
-        
+
 
 class ApplyFilter(object, CustomTools):
     """Implementation for layer_filter_tool_addin.apply_filter (Button)"""

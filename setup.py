@@ -75,4 +75,4 @@ print("")
 
 temp = raw_input("Press Enter to exit...")
 
-os.startfile(r"\\fileserv\USA\GIS\David_Mangold\projects\148.Layer_Filter_Tool\maps\mxd\test2.mxd")
+os.startfile(r"\\fileserv\USA\GIS\David_Mangold\projects\148.Layer_Filter_Tool\maps\mxd\test3.mxd")
